@@ -88,6 +88,46 @@ func loop(ctx context.Context, wg *sync.WaitGroup, ch chan *Rsa, cancel chan *Rs
 	return nil
 }
 
+func loop_init(ctx context.Context, wg *sync.WaitGroup, ch chan *Rsa, cancel chan *Rsa, target *Rsa) error {
+	defer wg.Done()
+	var i, u int64
+	var mod_indent, target_mod big.Int
+	mod_indent = *big.NewInt(0)
+	target_mod = *big.NewInt(0)
+	slog.DebugContext(ctx, fmt.Sprintf("Start: %s, mod:%s, %p", target.String(), target_mod.String(), target))
+	mod_indent.Mul(target.Indent, big.NewInt(10))
+	target_mod.Mod(target.Target, &mod_indent)
+
+	if target.Is() {
+		cancel <- target
+		return nil
+	} else if target.IsEnd() {
+		return nil
+	}
+	for i = 0; i < 10; i++ {
+		for u = i; u < 10; u++ {
+			var x big.Int
+			x.Add(target.Answer1, big.NewInt(i))
+			var y, xy big.Int
+			y.Add(target.Answer2, big.NewInt(u))
+
+			xy.Mul(&x, &y)
+			xy.Mod(&xy, &mod_indent)
+			if xy.Cmp(&target_mod) == 0 {
+				slog.DebugContext(ctx, fmt.Sprintf("add %s  x:%s, y:%s, xy:%s, %p", target.String(), x.String(), y.String(), xy.String(), target))
+				// add
+				ch <- &Rsa{
+					Target:  target.Target,
+					Answer1: &x,
+					Answer2: &y,
+					Indent:  big.NewInt(10),
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func main_loop(ctx context.Context, target *big.Int) {
 	var wg sync.WaitGroup
 	loop_ctx, cancel := context.WithCancel(ctx)
@@ -130,7 +170,7 @@ func main_loop(ctx context.Context, target *big.Int) {
 	}()
 
 	wg.Add(1)
-	loop(loop_ctx, &wg, ch, cancel_ch, &target_rsa)
+	loop_init(loop_ctx, &wg, ch, cancel_ch, &target_rsa)
 	go func() {
 		wg.Wait()
 		slog.InfoContext(ctx, fmt.Sprintf("Answer not found. Target: %s", target.String()))
